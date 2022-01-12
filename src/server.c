@@ -1,53 +1,46 @@
-#include <stdio.h>
-
+#if defined(unix) || defined(__unix__) || defined(__unix)
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#elif defined(_MSC_VER)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
+#error Can not recognize your OS
+#endif
+
+#include <stdio.h>
+#include <assert.h>
+#include <stdlib.h>
+
+#include <sys/types.h>
 
 #include <fcntl.h>
-#include <netdb.h>
 
 #include <errno.h>
 
-#ifdef MSVER
-typedef SOCKET sock_t;
-#else
+
+#if defined(unix) || defined(__unix__) || defined(__unix)
 typedef int sock_t;
 #define INVALID_SOCKET -1
+#else
+typedef SOCKET sock_t;
+typedef int ssize_t;
 #endif
 
-
+#if defined(unix) || defined(__unix__) || defined(__unix)
 void sock_init()
 {
 }
 
 void sock_uninit()
 {
-}
 
-//int sock_create(int domain, int type)
-//{
-//	int s = socket(domain, type, 0);
-//	return s;
-//}
-//
-//// macro?
-//int sock_create_tcp()
-//{
-//	// IPPROTO_TCP
-//	return sock_create(AF_INET, SOCK_STREAM);
-//}
-//
-//int sock_create_udp()
-//{
-//	return sock_create(AF_INET, SOCK_DGRAM);
-//}
-//
-//int sock_create_tcp_ipv6()
-//{
-//	return sock_create(AF_INET6, SOCK_STREAM);
-//}
+}
 
 int sock_close(sock_t s)
 {
@@ -69,6 +62,56 @@ int sock_block(sock_t s)
 
 	return fcntl(s, F_SETFL, fl & ~O_NONBLOCK);
 }
+
+#else
+
+void sock_init()
+{
+	WSADATA wsaData;
+	int rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (!rc) return;
+
+#define ERROR2STR(_x_) case _x_: err = #_x_; break
+	const char* err;
+	switch (rc) {
+		ERROR2STR(WSASYSNOTREADY);
+		ERROR2STR(WSAVERNOTSUPPORTED);
+		ERROR2STR(WSAEINPROGRESS);
+		ERROR2STR(WSAEPROCLIM);
+		ERROR2STR(WSAEFAULT);
+	default:
+		err = "unknown";
+		break;
+	}
+
+	fprintf(stderr, "[E] sock_init: %s\n", err);
+	exit(1);
+#undef ERROR2STR
+}
+
+void sock_uninit()
+{
+	WSACleanup();
+}
+
+int sock_close(sock_t s)
+{
+	return closesocket(s);
+}
+
+int sock_nblock(sock_t s)
+{
+	u_long mode = 1;
+	return ioctlsocket(s, FIONBIO, &mode);
+}
+
+int sock_block(sock_t s)
+{
+	u_long mode = 0;
+	return ioctlsocket(s, FIONBIO, &mode);
+}
+
+#endif
 
 //int sock_connect(int s, const char* addr, int port, int timeout_sec)
 //{
@@ -99,11 +142,18 @@ static void gai_seterrno(int e)
 		case EAI_MEMORY:
 		    errno = ENOMEM;
 		    break;
+//		case EAI_SOCKTYPE:
+//		    errno = ESOCKTNOSUPPORT;
+//		    break;
 		case EAI_SOCKTYPE:
-		    errno = ESOCKTNOSUPPORT;
+		    errno = ENOTSUP;
 		    break;
+
+#if defined(unix) || defined(__unix__) || defined(__unix)
 		case EAI_SYSTEM:
+			break;
 		    /* errno already set */
+#endif
 		default:
 		    errno = EINVAL;
 	}
@@ -152,7 +202,7 @@ sock_t sock_server(const char* host, int port)
 		const int optval = 1;
 		setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
-		int rc = bind(s, cur->ai_addr, cur->ai_addrlen);
+		int rc = bind(s, cur->ai_addr, (socklen_t)cur->ai_addrlen);
 		if (!rc) break;
 
 		sock_close(s);
@@ -216,7 +266,7 @@ sock_t sock_connect(const char* host, int port, int socktype, int protocol, int 
 		sock_nblock(s);
 
 		// TODO: EINTR
-		int rc = connect(s, cur->ai_addr, cur->ai_addrlen);
+		int rc = connect(s, cur->ai_addr, (socklen_t)cur->ai_addrlen);
 		// errno can be EINTR -> connect again
 		if (!rc) {
 			sock_block(s);
@@ -236,7 +286,7 @@ sock_t sock_connect(const char* host, int port, int socktype, int protocol, int 
 		FD_SET(s, &fds);
 
 		// TODO: EINTR
-		rc = select(s+1, 0, &fds, 0, &tv);
+		rc = select((int)s+1, 0, &fds, 0, &tv);
 		if (rc<0) {
 			// errno may be EINTR -> select again
 			// error
@@ -296,7 +346,6 @@ int sock_recv(int s, char* data, size_t sz, int timeout_sec)
 
 
 
-#include <stdlib.h>
 
 //struct addrinfo hints = {0};
 ////hints.ai_flags = 0;

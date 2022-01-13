@@ -1,7 +1,8 @@
 #include <stdio.h>
+#include <stdarg.h>
 
 typedef struct repeat_s {
-	int (*proc)(struct repeat_s* r, ...);
+	int (*proc)(struct repeat_s* r, va_list);
 	int try_again;
 } repeat_t;
 

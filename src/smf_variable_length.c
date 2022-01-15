@@ -17,9 +17,9 @@ int smf_vl_encode(uint32_t v, uint8_t* s, uint32_t sz)
 	uint32_t cur_v = v;
 
 	for (uint8_t* cur=lsb; s <= cur; --cur, cur_v>>=7) {
-		*cur = cur_v & 0x7F;
-		if (cur != lsb) *cur |= 0x80;
+		*cur = cur_v | 0x80;
 	}
+	*lsb &= 0x7F;
 
 	return n_7bits;
 }
@@ -30,7 +30,8 @@ int smf_vl_decode(const uint8_t* s, uint32_t sz, uint32_t* val)
 	const int8_t* c = s;
 
 	*val = 0;
-	for (;c<end; ++c) {
+	// TODO: check if input stream size fits to uint32_t
+	for (; c<end; ++c) {
 		*val <<= 7;
 		*val |= (*c & 0x7F);
 

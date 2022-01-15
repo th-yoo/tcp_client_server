@@ -23,6 +23,13 @@
 
 #include <errno.h>
 
+// c websocket
+// https://github.com/Theldus/wsServer
+// https://github.com/Theldus/wsServer/blob/master/doc/TLS.md
+// TLS tunnel
+// https://www.stunnel.org/
+
+
 
 #if defined(unix) || defined(__unix__) || defined(__unix)
 typedef int sock_t;
@@ -44,6 +51,7 @@ void sock_uninit()
 
 int sock_close(sock_t s)
 {
+	shutdown(s, SHUT_RDWR);
 	return close(s);
 }
 
@@ -368,7 +376,12 @@ int main()
 {
 	sock_init();
 
-	sock_t s = sock_server(0, 7777);
+	// bind all interface
+	//sock_t s = sock_server(0, 7777);
+	//sock_t s = sock_server("localhost", 7777);
+	// can not listen
+	//sock_t s = sock_server("127.0.0.1", 7777);
+	sock_t s = sock_server("::1", 7777);
 	if (s < 0) {
 		// strerror
 		perror("can not bind");
@@ -388,6 +401,8 @@ int main()
 		// onetime echo server
 		char buf[1024];
 		ssize_t n_read = recv(c, buf, 1024, 0);
+		buf[n_read] = '\0';
+		puts(buf);
 		send(c, buf, n_read, 0);
 
 		sock_close(c);
